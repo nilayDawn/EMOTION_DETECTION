@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EmotiSense — Feel the Words</title>
+    <meta name="description"
+        content="AI-powered emotion detection. Paste any text and let a BiGRU neural network reveal the emotion living inside the words." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="/static/style.css" />
+</head>
+
+<body data-emotion="neutral">
+
+    <canvas id="bokehCanvas" aria-hidden="true"></canvas>
+    <div class="vignette" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+
+    <main class="page">
+        <div class="card-border-shell" id="cardBorderShell">
+            <div class="glass-card">
+
+                <header class="header">
+                    <div>
+                        <span class="eyebrow" id="eyebrow">AI · EMOTION DETECTION</span>
+                        <h1>What does your <em id="headingEm">soul</em> feel?</h1>
+                        <p class="subtitle">Write your thoughts. Let the AI feel them.</p>
+                    </div>
+                    <div class="status-badge" id="statusBadge">
+                        <span class="status-dot"></span>
+                        <span id="statusText">Connecting…</span>
+                    </div>
+                </header>
+
+                <section class="input-row">
+                    <div class="orb-area">
+                        <div class="orb-wrapper" id="orbWrapper">
+                            <div class="orb-halo" id="orbHalo"></div>
+                            <div class="orb-glow" id="orbGlow"></div>
+                            <div class="orb-body" id="orbBody">
+                                <div class="orb-gloss"></div>
+                                <span class="orb-emoji" id="orbEmoji">🤔</span>
+                            </div>
+                            <div class="orb-ripple" id="orbRipple1"></div>
+                            <div class="orb-ripple delayed" id="orbRipple2"></div>
+                        </div>
+                    </div>
+
+                    <div class="textarea-block">
+                        <span class="field-label">INPUT</span>
+                        <div class="textarea-shell" id="textareaShell">
+                            <textarea id="textInput" placeholder="Tell me how you're feeling…" maxlength="2000"
+                                spellcheck="false" aria-label="Emotion text input"></textarea>
+                        </div>
+                        <div class="field-footer">
+                            <span class="char-count" id="charCount">0 / 2000</span>
+                            <button id="analyzeBtn" aria-label="Analyze emotion">
+                                <span class="btn-label">Read the mood</span>
+                                <svg class="btn-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                    <path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.8"
+                                        stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <span class="btn-spinner" aria-hidden="true"></span>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="chips-row" aria-label="Example sentences">
+                    <span class="chips-label">Try an example</span>
+                    <div class="chips-list">
+                        <button class="chip" data-emotion="joy"
+                            data-text="I feel incredibly happy and thrilled about this!">😄 Joy</button>
+                        <button class="chip" data-emotion="sadness"
+                            data-text="I feel so depressed and hopeless lately.">😢 Sadness</button>
+                        <button class="chip" data-emotion="anger"
+                            data-text="I am furious and disgusted by this terrible insult.">😠 Anger</button>
+                        <button class="chip" data-emotion="fear"
+                            data-text="I feel so terrified and anxious about what might happen.">😨 Fear</button>
+                        <button class="chip" data-emotion="surprise"
+                            data-text="I was completely stunned and amazed by the surprise.">😲 Surprise</button>
+                        <button class="chip" data-emotion="love"
+                            data-text="I feel so romantic, caring, and deeply loved.">❤️ Love</button>
+                    </div>
+                </section>
+
+                <div class="error-toast" id="errorToast" role="alert" aria-live="polite" hidden>
+                    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5" />
+                        <path d="M10 6v4M10 13v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                    </svg>
+                    <span id="errorMsg">Something went wrong</span>
+                </div>
+
+                <section class="result-section" id="resultSection" aria-live="polite" hidden>
+                    <div class="result-grid">
+                        <div class="result-card emotion-card" id="emotionCard">
+                            <span class="field-label">DETECTED EMOTION</span>
+                            <div class="big-emotion-row">
+                                <span class="big-emoji" id="bigEmoji">—</span>
+                                <span class="big-name" id="bigName">—</span>
+                            </div>
+                            <p class="confidence-line" id="confidenceLine">—</p>
+                            <p class="emotion-desc" id="emotionDesc"></p>
+                            <p class="analyzed-quote" id="analyzedQuote"></p>
+                        </div>
+                        <div class="result-card breakdown-card" id="breakdownCard">
+                            <span class="field-label">BREAKDOWN</span>
+                            <div class="breakdown-rows" id="breakdownRows"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- <section class="history-section" id="historySection" hidden>
+          <div class="history-head">
+            <span class="field-label">RECENT ANALYSES</span>
+            <button class="clear-btn" id="clearHistory">Clear</button>
+          </div>
+          <div class="history-list" id="historyList"></div>
+        </section> -->
+
+                <footer class="card-footer">
+                    <span>Powered by <strong>BiGRU</strong></span>
+                    <span class="sep">·</span>
+                    <span>6-class Emotion Classification</span>
+                    <span class="sep">·</span>
+                    <span>Built with FastAPI</span>
+                </footer>
+
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/script.js"></script>
+</body>
+
+</html>
