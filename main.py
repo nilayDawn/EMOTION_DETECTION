@@ -1,9 +1,18 @@
-
+import os
+import threading
+import gc
 from pathlib import Path
 from contextlib import asynccontextmanager
 import pickle
 import re
 import numpy as np
+
+# Suppress TensorFlow verbose CPU/oneDNN logs and force CPU mode
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+import tensorflow as tf
 from keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from fastapi import FastAPI, HTTPException
@@ -12,31 +21,32 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-"""
-1. We are going to make some constants like:
-A. Model Path (BiGRU)
-B. Tokenizer Path
-C. Max Sequence Length
-D. Emotion Labels
-E. Emotion emojis
-"""
+from config import (
+    MODEL_DOWNLOAD_URL,
+    MODEL_PATH,
+    TOKENIZER_DOWNLOAD_URL,
+    TOKENIZER_PATH,
+)
+from predictor import download_artifact, patch_keras_deserialization
+
+# Limit TensorFlow threading to save memory on container runtimes
+try:
+    tf.config.set_visible_devices([], 'GPU')
+    tf.config.threading.set_inter_op_parallelism_threads(1)
+    tf.config.threading.set_intra_op_parallelism_threads(1)
+except Exception:
+    pass
+
 BASE_DIR = Path(__file__).resolve().parent
 ARTIFACTS_DIR = BASE_DIR / "artifacts"
 STATIC_DIR = BASE_DIR / "static"
 
-# A. Model Path (BiGRU)
 model_path = ARTIFACTS_DIR / "BiGRU_Model.keras"
-
-# B. Tokenizer Path
 tokenizer_path = ARTIFACTS_DIR / "tokenizer.pkl"
-
-# C. Max Sequence Length (66 is the trained sentence length from notebook)
 max_sequence_length = 66
 
-# D. Emotion Labels
 emotion_labels = ["sadness", "joy", "love", "anger", "fear", "surprise"]
 
-# E. Emotion emojis
 EMOTION_EMOJIS = {
     "sadness": "😢",
     "joy": "😄",
@@ -47,15 +57,6 @@ EMOTION_EMOJIS = {
 }
 
 
-"""
-2. Preprocess the upcoming text
-Cleans raw text so it matches the format used while training.
-A. Convert the text to lowercase. -done
-B. Remove apostrophes (e.g can't -> cant). -done
-C. Remove Special Characters and Punctuation. -done
-D. Remove extra spaces -done
-"""
-
 def preprocess_text(text: str) -> str:
     text = text.lower()
     text = re.sub(r"'", "", text)
@@ -63,13 +64,6 @@ def preprocess_text(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
-
-"""
-3. Request and Response Schemas
-A. Text Input -> Input schema the text sent by user. -done
-B. Prediction Response -> Output schema the emotion to predict. -done
-C. Health Response (Server health check)
-"""
 
 class TextInput(BaseModel):
     text: str = Field(
@@ -94,42 +88,36 @@ class HealthResponse(BaseModel):
     model_loaded: bool
 
 
-from config import (
-    MODEL_DOWNLOAD_URL,
-    MODEL_PATH,
-    TOKENIZER_DOWNLOAD_URL,
-    TOKENIZER_PATH,
-)
-from predictor import download_artifact, patch_keras_deserialization
+dl_model = {}
 
-"""
-4. Model Loading and LifeSpan Management
-Load the model and tokenizer once the server starts up.
-"""
-dl_model = {}  # {1. BiGRU, 2. Tokenizer}-> True , {} -> False
+def load_model_background():
+    try:
+        print('Ensuring model artifacts are ready...')
+        download_artifact(TOKENIZER_PATH, TOKENIZER_DOWNLOAD_URL)
+        download_artifact(MODEL_PATH, MODEL_DOWNLOAD_URL)
+
+        print('Loading model and tokenizer into memory...')
+        patch_keras_deserialization()
+        dl_model["BiGRU"] = load_model(str(MODEL_PATH), compile=False)
+        with open(TOKENIZER_PATH, 'rb') as file:
+            dl_model["Tokenizer"] = pickle.load(file)
+        gc.collect()
+        print('Model and tokenizer loaded successfully into memory!')
+    except Exception as e:
+        print(f'Error loading model: {e}')
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print('Ensuring model artifacts are downloaded...')
-    download_artifact(TOKENIZER_PATH, TOKENIZER_DOWNLOAD_URL)
-    download_artifact(MODEL_PATH, MODEL_DOWNLOAD_URL)
+    # Non-blocking background loader so Uvicorn opens port 8000 instantly (<0.1s)
+    loader_thread = threading.Thread(target=load_model_background, daemon=True)
+    loader_thread.start()
 
-    print('Loading the model and tokenizer...')
-    patch_keras_deserialization()
-    dl_model["BiGRU"] = load_model(str(MODEL_PATH), compile=False)    # BiGRU Model for inference
-    with open(TOKENIZER_PATH, 'rb') as file:
-        dl_model["Tokenizer"] = pickle.load(file)
-    print('Model and tokenizer loaded successfully...')
-
-    yield  # Server is running and ready for requests
+    yield
 
     dl_model.clear()
 
 
-"""
-5. Mount the static files to the FastAPI app
-A. Enable CORS (Cross-Origin Resource Sharing) to allow requests from different origins.
-"""
 app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
@@ -143,20 +131,10 @@ app.add_middleware(
 app.mount('/static', StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-"""
-6. API Endpoints.
-A. Server UI at homepage ('/')
-B. Static asset fallbacks ('/style.css', '/script.js')
-C. Health Check Endpoint ('/health')
-D. Predict Emotion Endpoint ('/predict')
-"""
-
-# A. Server UI at homepage ('/')
 @app.get('/', include_in_schema=False)
 def server_ui():
     return FileResponse(STATIC_DIR / 'index.html')
 
-# B. Direct fallback routes for root static requests (prevents 404 if index.html uses relative paths)
 @app.get('/style.css', include_in_schema=False)
 def serve_css():
     return FileResponse(STATIC_DIR / 'style.css')
@@ -165,36 +143,26 @@ def serve_css():
 def serve_js():
     return FileResponse(STATIC_DIR / 'script.js')
 
-# C. Health Check Endpoint ('/health' and '/health/')
 @app.get('/health', response_model=HealthResponse)
 @app.get('/health/', response_model=HealthResponse, include_in_schema=False)
 def health_check():
-    return HealthResponse(status="Server is running", model_loaded=bool(dl_model))
+    is_loaded = bool(dl_model.get("BiGRU") and dl_model.get("Tokenizer"))
+    status_msg = "Model Online" if is_loaded else "Model Loading..."
+    return HealthResponse(status=status_msg, model_loaded=is_loaded)
 
-# D. Predict Emotion Endpoint ('/predict' and '/predict/')
 @app.post('/predict', response_model=PredictionResponse)
 @app.post('/predict/', response_model=PredictionResponse, include_in_schema=False)
 def predict_emotion(text_input: TextInput):
-    """
-    1. Cleans the input sentences.
-    2. Convert the words into numeric using tokenizer.
-    3. Pad the sequences to ensure uniform length.
-    4. Run prediction using the BiGRU model.
-    5. Return the top emotion and full probability breakdown.
-    """
-
     BiGRU_model = dl_model.get("BiGRU")
     tokenizer_model = dl_model.get("Tokenizer")
 
     if BiGRU_model is None or tokenizer_model is None:
-        raise HTTPException(status_code=503, detail="Model is not loaded yet. Please try again later.")
+        raise HTTPException(status_code=503, detail="Model is still initializing in memory. Please try again in 5 seconds.")
 
-    # 1. Preprocess and validate
     cleaned_text = preprocess_text(text_input.text)
     if not cleaned_text:
         raise HTTPException(status_code=400, detail="Input text cannot be empty or only special characters/whitespace.")
 
-    # 2. and 3. Tokenize and pad
     tokenized_text = tokenizer_model.texts_to_sequences([cleaned_text])
     padded_sequence = pad_sequences(
         tokenized_text,
@@ -203,10 +171,8 @@ def predict_emotion(text_input: TextInput):
         truncating="post"
     )
 
-    # 4. Predict
     probabilities = BiGRU_model.predict(padded_sequence, verbose=0)[0]
 
-    # 5. Format results
     top_emotion_index = int(np.argmax(probabilities))
     predicted_label = emotion_labels[top_emotion_index]
     predicted_emoji = EMOTION_EMOJIS.get(predicted_label, "❓")
