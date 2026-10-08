@@ -454,27 +454,10 @@ class BokehEngine {
 const bokehEngine = new BokehEngine(bokehCanvas);
 
 // ─── 2. Smart Resilient API Fetch ──────────────────────────────────
-function getApiUrl(endpoint) {
-  if (window.location.protocol === 'file:' || !window.location.origin || window.location.origin === 'null') {
-    return `http://127.0.0.1:8000${endpoint}`;
-  }
-  return endpoint;
-}
-
 async function apiFetch(endpoint, options = {}) {
-  const url = getApiUrl(endpoint);
-  try {
-    let res = await fetch(url, options);
-    if (res.status === 404 && !url.includes(':8000')) {
-      res = await fetch(`http://127.0.0.1:8000${endpoint}`, options);
-    }
-    return res;
-  } catch (err) {
-    if (!url.includes(':8000')) {
-      return await fetch(`http://127.0.0.1:8000${endpoint}`, options);
-    }
-    throw err;
-  }
+  const isLocalFile = window.location.protocol === 'file:' || !window.location.origin || window.location.origin === 'null';
+  const url = isLocalFile ? `http://127.0.0.1:8000${endpoint}` : endpoint;
+  return await fetch(url, options);
 }
 
 async function checkHealth() {
