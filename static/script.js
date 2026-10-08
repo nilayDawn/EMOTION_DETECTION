@@ -455,9 +455,7 @@ const bokehEngine = new BokehEngine(bokehCanvas);
 
 // ─── 2. Smart Resilient API Fetch ──────────────────────────────────
 function getApiUrl(endpoint) {
-  const isFile = window.location.protocol === 'file:' || !window.location.origin || window.location.origin === 'null';
-  const isOtherPort = window.location.port && window.location.port !== '8000';
-  if (isFile || isOtherPort) {
+  if (window.location.protocol === 'file:' || !window.location.origin || window.location.origin === 'null') {
     return `http://127.0.0.1:8000${endpoint}`;
   }
   return endpoint;
