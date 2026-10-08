@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Virtual Environments
+.venv/
+venv/
+env/
+.emotion_detection/
+
+# Python cache & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Large artifacts & experiments (model/tokenizer download automatically on startup)
+artifacts/
+experiment/
+*.h5
+*.keras
+*.pkl
+
+# IDE and Editor files
+.vscode/
+.idea/
+.kilo/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and environment variables
+*.log
+.env
+.env.*
