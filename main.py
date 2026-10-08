@@ -171,9 +171,24 @@ def serve_js():
 def health_check():
     return HealthResponse(status="Server is running", model_loaded=bool(dl_model))
 
+# Safely import spaces for Hugging Face ZeroGPU support
+try:
+    import spaces
+except ImportError:
+    class spaces:
+        @staticmethod
+        def GPU(func=None, **kwargs):
+            if func is not None:
+                return func
+            def decorator(f):
+                return f
+            return decorator
+
+
 # D. Predict Emotion Endpoint ('/predict' and '/predict/')
 @app.post('/predict', response_model=PredictionResponse)
 @app.post('/predict/', response_model=PredictionResponse, include_in_schema=False)
+@spaces.GPU
 def predict_emotion(text_input: TextInput):
     """
     1. Cleans the input sentences.
