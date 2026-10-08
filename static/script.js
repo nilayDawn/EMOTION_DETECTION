@@ -735,6 +735,7 @@ function saveToHistory(data, text) {
 }
 
 function renderHistoryUI() {
+  if (!historySection || !historyList) return;
   if (historyState.length === 0) {
     historySection.hidden = true;
     return;
@@ -766,11 +767,13 @@ function renderHistoryUI() {
   });
 }
 
-clearHistory.addEventListener('click', () => {
-  historyState = [];
-  localStorage.removeItem(STORAGE_KEY);
-  renderHistoryUI();
-});
+if (clearHistory) {
+  clearHistory.addEventListener('click', () => {
+    historyState = [];
+    localStorage.removeItem(STORAGE_KEY);
+    renderHistoryUI();
+  });
+}
 
 // ─── 7. Initialization ─────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
