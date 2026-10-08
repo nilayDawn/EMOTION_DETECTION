@@ -100,7 +100,7 @@ from config import (
     TOKENIZER_DOWNLOAD_URL,
     TOKENIZER_PATH,
 )
-from predictor import download_artifact
+from predictor import download_artifact, patch_keras_deserialization
 
 """
 4. Model Loading and LifeSpan Management
@@ -115,7 +115,8 @@ async def lifespan(app: FastAPI):
     download_artifact(MODEL_PATH, MODEL_DOWNLOAD_URL)
 
     print('Loading the model and tokenizer...')
-    dl_model["BiGRU"] = load_model(str(MODEL_PATH))                   # BiGRU Model
+    patch_keras_deserialization()
+    dl_model["BiGRU"] = load_model(str(MODEL_PATH), compile=False)    # BiGRU Model for inference
     with open(TOKENIZER_PATH, 'rb') as file:
         dl_model["Tokenizer"] = pickle.load(file)
     print('Model and tokenizer loaded successfully...')

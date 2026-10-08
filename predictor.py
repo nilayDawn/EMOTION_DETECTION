@@ -73,6 +73,40 @@ def preprocess_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def patch_keras_deserialization() -> None:
+    """
+    Patches Keras layer classes to gracefully handle configs containing
+    newer parameters (such as `quantization_config`) across different Keras versions.
+    """
+    modules = []
+    try:
+        import keras
+        modules.append(keras.layers)
+    except ImportError:
+        pass
+
+    try:
+        import tensorflow as tf
+        if hasattr(tf, "keras") and hasattr(tf.keras, "layers"):
+            modules.append(tf.keras.layers)
+    except ImportError:
+        pass
+
+    for mod in modules:
+        for cls_name in ["Embedding", "Dense", "GRU", "Bidirectional", "SpatialDropout1D", "Dropout"]:
+            layer_cls = getattr(mod, cls_name, None)
+            if layer_cls is not None and hasattr(layer_cls, "__init__"):
+                if not getattr(layer_cls, "_is_patched_for_compat", False):
+                    orig_init = layer_cls.__init__
+                    def _make_init(fn):
+                        def _patched_init(self, *args, **kwargs):
+                            kwargs.pop("quantization_config", None)
+                            return fn(self, *args, **kwargs)
+                        return _patched_init
+                    layer_cls.__init__ = _make_init(orig_init)
+                    layer_cls._is_patched_for_compat = True
+
+
 class EmotionPredictor:
     """
     Service responsible for loading the trained BiGRU model and tokenizer,
@@ -113,7 +147,14 @@ class EmotionPredictor:
             self.tokenizer = pickle.load(f)
 
         logger.info(f"Loading Keras model from {self.model_path}...")
-        self.model = tf.keras.models.load_model(str(self.model_path))
+        # Apply compatibility patches and load without compilation for inference
+        patch_keras_deserialization()
+        try:
+            import keras
+            self.model = keras.models.load_model(str(self.model_path), compile=False)
+        except Exception:
+            self.model = tf.keras.models.load_model(str(self.model_path), compile=False)
+
         logger.info("Model and tokenizer loaded successfully.")
 
     @property
