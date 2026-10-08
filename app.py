@@ -115,14 +115,13 @@ def health_check():
     return {"status": "Server is running", "model_loaded": predictor.is_loaded}
 
 @demo.app.post("/predict")
-@spaces.GPU
 async def predict_api(request: Request):
     try:
         data = await request.json()
         text = data.get("text", "")
         if not text or not text.strip():
             return JSONResponse(status_code=400, content={"detail": "Input text cannot be empty."})
-        result = predictor.predict_single(text)
+        result = predict_emotion_core(text)
         return {
             "text": text,
             "predicted_emotion": result["predicted_emotion"],
