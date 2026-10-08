@@ -32,6 +32,21 @@ predictor.load()
 print("Predictor loaded successfully.")
 
 
+# Safely import spaces for Hugging Face ZeroGPU support
+try:
+    import spaces
+except ImportError:
+    class spaces:
+        @staticmethod
+        def GPU(func=None, **kwargs):
+            if func is not None:
+                return func
+            def decorator(f):
+                return f
+            return decorator
+
+
+@spaces.GPU
 def predict_emotion_gradio(text: str):
     """
     Callback for Gradio prediction.
