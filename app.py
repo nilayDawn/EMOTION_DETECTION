@@ -1,3 +1,11 @@
+import os
+import sys
+
+# Suppress TensorFlow verbose CPU/oneDNN logs and disable experimental Gradio SSR
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["GRADIO_SSR_MODE"] = "False"
+
 import gradio as gr
 from config import (
     EMOTION_EMOJIS,
@@ -121,4 +129,8 @@ with gr.Blocks(css=custom_css, title="🎭 Emotion Detection AI") as demo:
         )
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.queue().launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        ssr_mode=False,
+    )
