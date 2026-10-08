@@ -29,6 +29,8 @@ COPY --chown=user:user . .
 # Ensure artifacts directory is writable
 RUN mkdir -p /app/artifacts
 
-EXPOSE 7860
+# Support Azure dynamic port routing (default 8000)
+ENV PORT=8000
+EXPOSE 8000 7860 80
 
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
