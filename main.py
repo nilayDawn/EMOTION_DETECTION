@@ -93,6 +93,14 @@ class HealthResponse(BaseModel):
     model_loaded: bool
 
 
+from config import (
+    MODEL_DOWNLOAD_URL,
+    MODEL_PATH,
+    TOKENIZER_DOWNLOAD_URL,
+    TOKENIZER_PATH,
+)
+from predictor import download_artifact
+
 """
 4. Model Loading and LifeSpan Management
 Load the model and tokenizer once the server starts up.
@@ -101,15 +109,19 @@ dl_model = {}  # {1. BiGRU, 2. Tokenizer}-> True , {} -> False
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    print('Ensuring model artifacts are downloaded...')
+    download_artifact(TOKENIZER_PATH, TOKENIZER_DOWNLOAD_URL)
+    download_artifact(MODEL_PATH, MODEL_DOWNLOAD_URL)
+
     print('Loading the model and tokenizer...')
-    dl_model["BiGRU"] = load_model(str(model_path))                   # BiGRU Model
-    with open(tokenizer_path, 'rb') as file:
+    dl_model["BiGRU"] = load_model(str(MODEL_PATH))                   # BiGRU Model
+    with open(TOKENIZER_PATH, 'rb') as file:
         dl_model["Tokenizer"] = pickle.load(file)
-    print('Model are loaded successfully...')
+    print('Model and tokenizer loaded successfully...')
 
-    yield  # Pause, model is loaded and server is running and at this point model wait karega for request
+    yield  # Server is running and ready for requests
 
-    dl_model.clear()  # Ek baar server band ho gaya uske baad model ko memory se hata do.
+    dl_model.clear()
 
 
 """
