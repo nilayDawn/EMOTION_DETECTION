@@ -1,6 +1,7 @@
 import logging
 import pickle
 import re
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import numpy as np
@@ -11,11 +12,51 @@ from config import (
     EMOTION_EMOJIS,
     LABEL_NAMES,
     MAX_SEQUENCE_LENGTH,
+    MODEL_DOWNLOAD_URL,
     MODEL_PATH,
+    TOKENIZER_DOWNLOAD_URL,
     TOKENIZER_PATH,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def download_artifact(local_path: Path, url: str) -> None:
+    """Downloads an artifact from a remote URL if it does not exist locally."""
+    if local_path.is_file():
+        return
+
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Artifact {local_path.name} not found locally. Downloading from {url}...")
+
+    # Download to a temporary file first to avoid partial file corruptions
+    temp_path = local_path.with_suffix(local_path.suffix + ".downloading")
+    try:
+        # Create request with a browser-like User-Agent for reliable Hugging Face downloads
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (EmotionDetectionApp)"})
+        with urllib.request.urlopen(req) as response, open(temp_path, "wb") as out_file:
+            total_size = int(response.headers.get("Content-Length", 0))
+            downloaded = 0
+            block_size = 1024 * 1024  # 1 MB blocks
+
+            while True:
+                buffer = response.read(block_size)
+                if not buffer:
+                    break
+                downloaded += len(buffer)
+                out_file.write(buffer)
+                if total_size > 0:
+                    percent = (downloaded / total_size) * 100
+                    if downloaded % (50 * 1024 * 1024) < block_size or downloaded == total_size:
+                        logger.info(f"Downloading {local_path.name}: {percent:.1f}% ({downloaded / (1024*1024):.1f} MB / {total_size / (1024*1024):.1f} MB)")
+
+        temp_path.replace(local_path)
+        logger.info(f"Successfully downloaded and saved {local_path.name}.")
+    except Exception as e:
+        if temp_path.exists():
+            temp_path.unlink()
+        logger.error(f"Failed to download {local_path.name} from {url}: {e}")
+        raise RuntimeError(f"Could not download {local_path.name} from {url}: {e}") from e
 
 
 def preprocess_text(text: str) -> str:
@@ -56,7 +97,11 @@ class EmotionPredictor:
         self.tokenizer = None
 
     def load(self) -> None:
-        """Loads the tokenizer and Keras model from disk."""
+        """Loads the tokenizer and Keras model, downloading from Hugging Face if needed."""
+        # Ensure artifacts are present locally before loading
+        download_artifact(self.tokenizer_path, TOKENIZER_DOWNLOAD_URL)
+        download_artifact(self.model_path, MODEL_DOWNLOAD_URL)
+
         if not self.model_path.is_file():
             raise FileNotFoundError(f"Model file not found at: {self.model_path}")
 
